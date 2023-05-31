@@ -4,6 +4,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.19] - Unreleased
+### Fixed
+- Case sensitivity when dealing with file formats.
+- Race condition when setting the transformation of gltf files.
+
+## [0.3.18] - 2023-05-13
+### Added
+- Support for DRACO-compressed PNTs files.
+
+## [0.3.17] - 2023-04-03
+### Fixed
+- Case where raycasting could return an incorrect result when `firstHitOnly` was true.
+
 ## [0.3.16] - 2022-11-11
 ### Fixed
 - Incorrect internal import statement.
