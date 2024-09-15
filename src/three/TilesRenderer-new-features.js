@@ -18,6 +18,7 @@ import {
 } from "three";
 import { raycastTraverse, raycastTraverseFirstHit } from "./raycastTraverse.js";
 import { readMagicBytes } from "../utilities/readMagicBytes.js";
+import { decompressSync } from "fflate";
 
 const INITIAL_FRUSTUM_CULLED = Symbol("INITIAL_FRUSTUM_CULLED");
 const tempMat = new Matrix4();
@@ -488,6 +489,24 @@ export class TilesRenderer extends TilesRendererBase {
 	}
 
 	parseTile(buffer, tile, extension) {
+		let buffer = bufferData;
+		const magicBytes = readMagicBytes(bufferData).toLowerCase();
+		if (this.decompressTiles == null) {
+			magicBytes == "b3dm" ||
+			magicBytes == "pnts" ||
+			magicBytes == "i3dm" ||
+			magicBytes == "cmpt" ||
+			magicBytes == "gltf" ||
+			magicBytes == "glb"
+				? (this.decompressTiles = false)
+				: (this.decompressTiles = true);
+		}
+
+		if (this.decompressTiles) {
+			const decompressed = decompressSync(new Uint8Array(bufferData));
+			buffer = decompressed.buffer;
+		}
+
 		tile._loadIndex = tile._loadIndex || 0;
 		tile._loadIndex++;
 
@@ -506,30 +525,31 @@ export class TilesRenderer extends TilesRendererBase {
 		const cached = tile.cached;
 		const cachedTransform = cached.transform;
 
+		const upAdjustment = new Matrix4();
 		switch (upAxis.toLowerCase()) {
 			case "x":
-				tempMat.makeRotationAxis(Y_AXIS, -Math.PI / 2);
+				upAdjustment.makeRotationAxis(Y_AXIS, -Math.PI / 2);
 				break;
 
 			case "y":
-				tempMat.makeRotationAxis(X_AXIS, Math.PI / 2);
+				upAdjustment.makeRotationAxis(X_AXIS, Math.PI / 2);
 				break;
 
 			case "z":
-				tempMat.identity();
+				upAdjustment.identity();
 				break;
 		}
 
-		const fileType = readMagicBytes(buffer) || extension;
+		const fileType = (readMagicBytes(buffer) || extension).toLowerCase();
 		switch (fileType) {
 			case "b3dm": {
 				const loader = new B3DMLoader(manager);
 				loader.workingPath = workingPath;
 				loader.fetchOptions = fetchOptions;
 
-				loader.adjustmentTransform.copy(tempMat);
+				loader.adjustmentTransform.copy(upAdjustment);
 
-				promise = loader.parse(buffer).then((res) => res.scene);
+				promise = loader.parse(buffer);
 				break;
 			}
 
@@ -537,7 +557,7 @@ export class TilesRenderer extends TilesRendererBase {
 				const loader = new PNTSLoader(manager);
 				loader.workingPath = workingPath;
 				loader.fetchOptions = fetchOptions;
-				promise = loader.parse(buffer).then((res) => res.scene);
+				promise = loader.parse(buffer);
 				break;
 			}
 
@@ -546,9 +566,9 @@ export class TilesRenderer extends TilesRendererBase {
 				loader.workingPath = workingPath;
 				loader.fetchOptions = fetchOptions;
 
-				loader.adjustmentTransform.copy(tempMat);
+				loader.adjustmentTransform.copy(upAdjustment);
 
-				promise = loader.parse(buffer).then((res) => res.scene);
+				promise = loader.parse(buffer);
 				break;
 			}
 
@@ -557,7 +577,7 @@ export class TilesRenderer extends TilesRendererBase {
 				loader.workingPath = workingPath;
 				loader.fetchOptions = fetchOptions;
 
-				loader.adjustmentTransform.copy(tempMat);
+				loader.adjustmentTransform.copy(upAdjustment);
 
 				promise = loader.parse(buffer).then((res) => res.scene);
 				break;
@@ -569,7 +589,7 @@ export class TilesRenderer extends TilesRendererBase {
 				const loader = new GLTFExtensionLoader(manager);
 				loader.workingPath = workingPath;
 				loader.fetchOptions = fetchOptions;
-				promise = loader.parse(buffer).then((res) => res.scene);
+				promise = loader.parse(buffer);
 				break;
 
 			default:
@@ -580,7 +600,17 @@ export class TilesRenderer extends TilesRendererBase {
 				break;
 		}
 
-		return promise.then((scene) => {
+		return promise.then((result) => {
+			let scene;
+			let metadata;
+			if (result.isObject3D) {
+				scene = result;
+				metadata = null;
+			} else {
+				scene = result.scene;
+				metadata = result;
+			}
+
 			if (tile._loadIndex !== loadIndex) {
 				return;
 			}
@@ -593,7 +623,7 @@ export class TilesRenderer extends TilesRendererBase {
 			// (such as applying RTC_CENTER) meaning they should happen _after_ the z-up
 			// rotation fix which is why "multiply" happens here.
 			if (fileType === "glb" || fileType === "gltf") {
-				scene.matrix.multiply(tempMat);
+				scene.matrix.multiply(upAdjustment);
 			}
 
 			scene.matrix.premultiply(cachedTransform);
@@ -602,8 +632,6 @@ export class TilesRenderer extends TilesRendererBase {
 				c[INITIAL_FRUSTUM_CULLED] = c.frustumCulled;
 			});
 			updateFrustumCulled(scene, !this.autoDisableRendererCulling);
-
-			cached.scene = scene;
 
 			// We handle raycasting in a custom way so remove it from here
 			scene.traverse((c) => {
@@ -634,6 +662,8 @@ export class TilesRenderer extends TilesRendererBase {
 			cached.materials = materials;
 			cached.geometry = geometry;
 			cached.textures = textures;
+			cached.scene = scene;
+			cached.metadata = metadata;
 
 			if (this.onLoadModel) {
 				this.onLoadModel(scene, tile);
@@ -675,6 +705,7 @@ export class TilesRenderer extends TilesRendererBase {
 			cached.materials = null;
 			cached.textures = null;
 			cached.geometry = null;
+			cached.metadata = null;
 		}
 
 		this.activeTiles.delete(tile);
