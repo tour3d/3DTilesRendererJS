@@ -68,6 +68,7 @@ export class TilesRendererBase {
 		this.fetchOptions = {};
 
 		this.preprocessURL = null;
+		this.preprocessDirname = null;
 
 		const lruCache = new LRUCache();
 		lruCache.unloadPriorityCallback = lruPriorityCallback;
@@ -272,11 +273,20 @@ export class TilesRendererBase {
 					version === "1.0" || version === "0.0",
 					'asset.version is expected to be a string of "1.0" or "0.0"'
 				);
+<<<<<<< HEAD
 
 				// remove trailing slash and last path-segment from the URL
 				let basePath = url.replace(/\/[^\/]*\/?$/, "");
 				basePath = new URL(basePath, window.location.href).toString();
 
+=======
+				const basePath = this.preprocessDirname
+					? this.preprocessDirname(url)
+					: new URL(
+							url.replace(/\/[^\/]*\/?$/, ""),
+							window.location.href
+					  ).toString();
+>>>>>>> 48826e4ed99677a352166f691be809a72123d4de
 				traverseSet(
 					json.root,
 					(node, parent) => this.preprocessNode(node, parent, basePath),
